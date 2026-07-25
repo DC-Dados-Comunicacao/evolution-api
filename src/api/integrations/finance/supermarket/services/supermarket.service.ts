@@ -10,6 +10,7 @@ import {
   IngestReceiptDto,
   ManualReceiptDto,
   ReceiptQueryDto,
+  SupermarketSettingDto,
 } from '../dto/supermarket.dto';
 import { SupermarketCategoryService } from './category.service';
 import { NfceService, ParsedReceipt } from './nfce.service';
@@ -361,6 +362,106 @@ export class SupermarketService {
 
     await this.prismaRepository.supermarketReceipt.delete({ where: { id: receiptId } });
     return { deleted: true, id: receiptId };
+  }
+
+  public async getSettings(instance: InstanceDto) {
+    const instanceId = await this.resolveInstanceId(instance.instanceName);
+    const setting = await this.prismaRepository.supermarketSetting.findUnique({
+      where: { instanceId },
+    });
+    return setting ?? { enabled: false, captureMedia: true, replyOnCapture: true, instanceId };
+  }
+
+  public async setSettings(instance: InstanceDto, data: SupermarketSettingDto) {
+    const instanceId = await this.resolveInstanceId(instance.instanceName);
+    return this.prismaRepository.supermarketSetting.upsert({
+      where: { instanceId },
+      create: {
+        instanceId,
+        enabled: data.enabled ?? false,
+        captureMedia: data.captureMedia ?? true,
+        replyOnCapture: data.replyOnCapture ?? true,
+      },
+      update: {
+        ...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
+        ...(data.captureMedia !== undefined ? { captureMedia: data.captureMedia } : {}),
+        ...(data.replyOnCapture !== undefined ? { replyOnCapture: data.replyOnCapture } : {}),
+      },
+    });
+  }
+
+  /**
+   * Handle an inbound WhatsApp message: when the module is enabled for the
+   * instance, capture receipts from NFC-e links (text) and, if media capture is
+   * on, from image/PDF attachments — downloading the media and running it
+   * through the same file ingestion pipeline.
+   */
+  public async handleIncomingMessage(instance: InstanceDto, remoteJid: string, msg: any) {
+    const setting = await this.prismaRepository.supermarketSetting.findUnique({
+      where: { instanceId: instance.instanceId },
+    });
+    if (!setting?.enabled) return;
+
+    const replyJid = setting.replyOnCapture ? remoteJid : undefined;
+
+    // 1) NFC-e link/QR in the message text.
+    const text = this.extractMessageText(msg);
+    if (text && this.nfceService.isNfce(text)) {
+      const url = this.nfceService.extractUrl(text) ?? text;
+      await this.ingest(instance, { url, remoteJid: replyJid });
+      return;
+    }
+
+    // 2) Image / PDF attachment.
+    if (!setting.captureMedia) return;
+
+    const media = this.detectMedia(msg);
+    if (!media) return;
+
+    const waInstance = this.waMonitor.waInstances[instance.instanceName];
+    if (!waInstance) return;
+
+    const downloaded = await waInstance.getBase64FromMediaMessage({ message: msg }, true);
+    const mimetype = (downloaded?.mimetype || media.mimetype || '').toLowerCase();
+
+    // Only receipts make sense here: images and PDFs.
+    if (!mimetype.startsWith('image/') && mimetype !== 'application/pdf') return;
+
+    const buffer =
+      downloaded?.buffer instanceof Buffer
+        ? downloaded.buffer
+        : Buffer.from(downloaded?.base64 ?? '', 'base64');
+    if (!buffer.length) return;
+
+    await this.ingestFile(
+      instance,
+      { buffer, mimetype, originalname: downloaded?.fileName || media.fileName },
+      replyJid,
+    );
+  }
+
+  private extractMessageText(msg: any): string | undefined {
+    const message = msg?.message ?? msg;
+    return (
+      message?.conversation ||
+      message?.extendedTextMessage?.text ||
+      message?.imageMessage?.caption ||
+      message?.documentMessage?.caption ||
+      message?.documentWithCaptionMessage?.message?.documentMessage?.caption ||
+      undefined
+    );
+  }
+
+  private detectMedia(msg: any): { mimetype?: string; fileName?: string } | undefined {
+    const message = msg?.message ?? msg;
+    if (message?.imageMessage) {
+      return { mimetype: message.imageMessage.mimetype, fileName: message.imageMessage.fileName };
+    }
+    const doc = message?.documentMessage || message?.documentWithCaptionMessage?.message?.documentMessage;
+    if (doc) {
+      return { mimetype: doc.mimetype, fileName: doc.fileName };
+    }
+    return undefined;
   }
 
   /**

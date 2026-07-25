@@ -33,6 +33,16 @@ export const ingestReceiptSchema: JSONSchema7 = {
   anyOf: [{ required: ['url'] }, { required: ['base64'] }, { required: ['imageUrl'] }],
 };
 
+export const supermarketSettingSchema: JSONSchema7 = {
+  $id: 'supermarketSettingSchema',
+  type: 'object',
+  properties: {
+    enabled: { type: 'boolean' },
+    captureMedia: { type: 'boolean' },
+    replyOnCapture: { type: 'boolean' },
+  },
+};
+
 export const manualReceiptSchema: JSONSchema7 = {
   $id: 'manualReceiptSchema',
   type: 'object',

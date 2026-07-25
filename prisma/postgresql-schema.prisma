@@ -106,6 +106,7 @@ model Instance {
   FlowiseSetting          FlowiseSetting?
   Pusher                  Pusher?
   SupermarketReceipt      SupermarketReceipt[]
+  SupermarketSetting      SupermarketSetting?
 }
 
 model Session {
@@ -680,4 +681,16 @@ model SupermarketReceiptItem {
 
   @@index([receiptId])
   @@index([category])
+}
+
+model SupermarketSetting {
+  id            String    @id @default(cuid())
+  enabled       Boolean   @default(false) @db.Boolean
+  captureMedia  Boolean   @default(true) @db.Boolean
+  replyOnCapture Boolean  @default(true) @db.Boolean
+  openaiCredsId String?   @db.VarChar(100)
+  createdAt     DateTime? @default(now()) @db.Timestamp
+  updatedAt     DateTime  @updatedAt @db.Timestamp
+  Instance      Instance  @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  instanceId    String    @unique
 }

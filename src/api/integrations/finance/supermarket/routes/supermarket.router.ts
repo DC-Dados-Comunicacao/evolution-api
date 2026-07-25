@@ -13,8 +13,9 @@ import {
   IngestReceiptDto,
   ManualReceiptDto,
   ReceiptQueryDto,
+  SupermarketSettingDto,
 } from '../dto/supermarket.dto';
-import { ingestReceiptSchema, manualReceiptSchema } from '../validate/supermarket.schema';
+import { ingestReceiptSchema, manualReceiptSchema, supermarketSettingSchema } from '../validate/supermarket.schema';
 
 // Receipts are held in memory and passed straight to the parser; 20 MB covers
 // high-resolution photos and multi-page PDFs.
@@ -77,6 +78,26 @@ export class SupermarketRouter extends RouterBroker {
           schema: instanceSchema,
           ClassRef: InstanceDto,
           execute: (instance) => supermarketController.analytics(instance, req.query as AnalyticsQueryDto),
+        });
+
+        res.status(HttpStatus.OK).json(response);
+      })
+      .post(this.routerPath('settings'), ...guards, async (req, res) => {
+        const response = await this.dataValidate<SupermarketSettingDto>({
+          request: req,
+          schema: supermarketSettingSchema,
+          ClassRef: SupermarketSettingDto,
+          execute: (instance, data) => supermarketController.setSettings(instance, data),
+        });
+
+        res.status(HttpStatus.OK).json(response);
+      })
+      .get(this.routerPath('settings'), ...guards, async (req, res) => {
+        const response = await this.dataValidate<InstanceDto>({
+          request: req,
+          schema: instanceSchema,
+          ClassRef: InstanceDto,
+          execute: (instance) => supermarketController.getSettings(instance),
         });
 
         res.status(HttpStatus.OK).json(response);

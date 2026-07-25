@@ -42,3 +42,12 @@ export class AnalyticsQueryDto {
   startDate?: string;
   endDate?: string;
 }
+
+export class SupermarketSettingDto {
+  // Master switch for the module on this instance (auto-capture from WhatsApp).
+  enabled?: boolean;
+  // Auto-process image/PDF media sent to the instance (uses the OpenAI vision model).
+  captureMedia?: boolean;
+  // Reply on WhatsApp with a summary after each captured receipt.
+  replyOnCapture?: boolean;
+}

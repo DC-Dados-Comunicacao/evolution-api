@@ -116,6 +116,9 @@
       .up-item.err .up-state { color: #f87171; }
       .up-item .spin { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
       @keyframes spin { to { transform: rotate(360deg); } }
+      .toggles { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-bottom: 8px; }
+      .tg { display: flex; align-items: center; gap: 7px; font-size: 13.5px; cursor: pointer; }
+      .tg input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
     </style>
   </head>
   <body>
@@ -150,6 +153,18 @@
         <div class="actions">
           <button class="load" id="load">Carregar</button>
         </div>
+      </section>
+
+      <section class="card settings-card" style="margin-bottom:20px">
+        <h2>Captura automática pelo WhatsApp</h2>
+        <div class="toggles">
+          <label class="tg"><input type="checkbox" id="setEnabled" /> <span>Módulo ativo nesta instância</span></label>
+          <label class="tg"><input type="checkbox" id="setCaptureMedia" /> <span>Ler foto/PDF enviados no WhatsApp (usa IA)</span></label>
+          <label class="tg"><input type="checkbox" id="setReply" /> <span>Responder no WhatsApp com o resumo</span></label>
+          <button type="button" id="saveSettings" class="load" style="width:auto;padding:8px 16px">Salvar</button>
+          <span id="setStatus" class="hint" style="margin:0"></span>
+        </div>
+        <div class="hint">Quando ativo, notas enviadas no WhatsApp (link/QR da NFC-e, foto ou PDF) viram gastos automaticamente.</div>
       </section>
 
       <section class="card upload-card" style="margin-bottom:20px">
@@ -429,9 +444,53 @@
         if (e.dataTransfer && e.dataTransfer.files) handleFiles(e.dataTransfer.files);
       });
 
-      el('load').addEventListener('click', loadData);
+      // ---- Configurações (captura automática) ----
+      async function loadSettings() {
+        var cfg = baseCfg();
+        if (!cfg.server || !cfg.instance || !cfg.apikey) return;
+        try {
+          var resp = await fetch(cfg.server + '/supermarket/settings/' + encodeURIComponent(cfg.instance), {
+            headers: { apikey: cfg.apikey },
+          });
+          if (!resp.ok) return;
+          var s = await resp.json();
+          el('setEnabled').checked = !!s.enabled;
+          el('setCaptureMedia').checked = s.captureMedia !== false;
+          el('setReply').checked = s.replyOnCapture !== false;
+        } catch (e) {
+          /* silencioso */
+        }
+      }
+
+      async function saveSettings() {
+        var cfg = baseCfg();
+        if (!cfg.server || !cfg.instance || !cfg.apikey) {
+          el('setStatus').textContent = 'Configure servidor/instância/API key.';
+          return;
+        }
+        el('setStatus').textContent = 'Salvando…';
+        try {
+          var resp = await fetch(cfg.server + '/supermarket/settings/' + encodeURIComponent(cfg.instance), {
+            method: 'POST',
+            headers: { apikey: cfg.apikey, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              enabled: el('setEnabled').checked,
+              captureMedia: el('setCaptureMedia').checked,
+              replyOnCapture: el('setReply').checked,
+            }),
+          });
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          el('setStatus').textContent = '✓ Salvo';
+          setTimeout(function () { el('setStatus').textContent = ''; }, 2500);
+        } catch (e) {
+          el('setStatus').textContent = '✗ ' + e.message;
+        }
+      }
+      el('saveSettings').addEventListener('click', saveSettings);
+
+      el('load').addEventListener('click', function () { loadData(); loadSettings(); });
       loadCfg();
-      if (el('instance').value && el('apikey').value) loadData();
+      if (el('instance').value && el('apikey').value) { loadData(); loadSettings(); }
     </script>
   </body>
 </html>

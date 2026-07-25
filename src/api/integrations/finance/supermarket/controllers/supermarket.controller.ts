@@ -6,8 +6,8 @@ import {
   IngestReceiptDto,
   ManualReceiptDto,
   ReceiptQueryDto,
+  SupermarketSettingDto,
 } from '../dto/supermarket.dto';
-import { NfceService } from '../services/nfce.service';
 import { SupermarketService } from '../services/supermarket.service';
 
 export type SupermarketEmitData = {
@@ -21,7 +21,6 @@ export class SupermarketController {
   constructor(private readonly supermarketService: SupermarketService) {}
 
   private readonly logger = new Logger('SupermarketController');
-  private readonly nfceService = new NfceService();
 
   public async ingestReceipt(instance: InstanceDto, data: IngestReceiptDto) {
     return this.supermarketService.ingest(instance, data);
@@ -54,40 +53,25 @@ export class SupermarketController {
     return this.supermarketService.analytics(instance, query);
   }
 
+  public async getSettings(instance: InstanceDto) {
+    return this.supermarketService.getSettings(instance);
+  }
+
+  public async setSettings(instance: InstanceDto, data: SupermarketSettingDto) {
+    return this.supermarketService.setSettings(instance, data);
+  }
+
   /**
-   * Hook invoked for every inbound WhatsApp message. When the message text
-   * carries an NFC-e link/QR content, the receipt is captured automatically.
-   * Non-receipt messages are ignored so other integrations are unaffected.
+   * Hook invoked for every inbound WhatsApp message. Delegates to the service,
+   * which decides — based on the instance settings — whether to capture a
+   * receipt from an NFC-e link or an image/PDF attachment. Non-receipt messages
+   * and disabled instances are ignored so other integrations are unaffected.
    */
   public async emit({ instance, remoteJid, msg }: SupermarketEmitData): Promise<void> {
     try {
-      const text = this.extractText(msg);
-      if (!text || !this.nfceService.isNfce(text)) return;
-
-      const url = this.nfceService.extractUrl(text);
-      const accessKey = this.nfceService.extractAccessKey(text);
-      if (!url && !accessKey) return;
-
-      this.logger.log(`NFC-e detected from ${remoteJid}, capturing receipt.`);
-
-      await this.supermarketService.ingest(instance, {
-        url: url ?? text,
-        remoteJid,
-      });
+      await this.supermarketService.handleIncomingMessage(instance, remoteJid, msg);
     } catch (error: any) {
       this.logger.error(`Supermarket auto-capture failed: ${error?.message}`);
     }
-  }
-
-  private extractText(msg: any): string | undefined {
-    if (!msg) return undefined;
-    const message = msg.message ?? msg;
-    return (
-      message?.conversation ||
-      message?.extendedTextMessage?.text ||
-      message?.imageMessage?.caption ||
-      message?.documentMessage?.caption ||
-      undefined
-    );
   }
 }

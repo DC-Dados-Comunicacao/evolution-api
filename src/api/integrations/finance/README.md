@@ -25,9 +25,18 @@ dashboard.
 
 ### Captura automática pelo WhatsApp
 
-Toda mensagem recebida passa por `supermarketController.emit`. Se o texto
-contiver um link/QR de NFC-e, a nota é capturada automaticamente — nenhuma outra
-mensagem é afetada.
+Toda mensagem recebida passa por `supermarketController.emit`, que delega ao
+serviço. A captura é **opt-in por instância** (`SupermarketSetting.enabled`):
+enquanto o módulo estiver desativado, nenhuma mensagem é tocada. Com o módulo
+ativo:
+
+- **Link/QR da NFC-e** no texto → nota capturada da SEFAZ.
+- **Foto ou PDF** enviados no chat → baixados e lidos (quando `captureMedia`
+  está ligado; usa a IA). Documentos que não são imagem/PDF são ignorados.
+- Se `replyOnCapture` estiver ligado, o app responde com o resumo.
+
+Ative pelo endpoint `POST /supermarket/settings/:instanceName` ou pelo painel
+"Captura automática" no dashboard.
 
 ## Endpoints
 
@@ -42,6 +51,8 @@ Base: `/supermarket` — todos exigem `:instanceName` e a apikey da instância.
 | GET    | `/supermarket/receipt/:receiptId/:instanceName` | Detalhe de uma nota                               |
 | DELETE | `/supermarket/receipt/:receiptId/:instanceName` | Remover uma nota                                  |
 | GET    | `/supermarket/analytics/:instanceName`      | Dados agregados para o dashboard                      |
+| POST   | `/supermarket/settings/:instanceName`       | Ativar/desativar o módulo e a captura (`enabled`, `captureMedia`, `replyOnCapture`) |
+| GET    | `/supermarket/settings/:instanceName`       | Ler as configurações da instância                     |
 
 ### Exemplos
 
@@ -106,9 +117,9 @@ Models: `SupermarketReceipt` e `SupermarketReceiptItem` (migrations em
 
 - Dashboard web consumindo o endpoint `analytics` (gráficos por categoria, mês,
   ranking de lojas/itens).
-- Captura automática de **foto** enviada no WhatsApp (hoje a captura automática
-  cobre link/QR; foto/PDF já funcionam pela API REST e pelo upload do dashboard).
-- Toggle de habilitação do módulo por instância.
+- Filtro por palavra-chave/legenda antes de processar fotos (para reduzir
+  chamadas à IA em imagens que não são notas).
+- Orçamento/limites por categoria e alertas de estouro.
 
 ## Dependências adicionais
 
