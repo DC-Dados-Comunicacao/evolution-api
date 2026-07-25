@@ -31,6 +31,13 @@ export class SupermarketController {
     return this.supermarketService.createManual(instance, data);
   }
 
+  public async uploadReceipt(instance: InstanceDto, body: any, file: any) {
+    return this.supermarketService.ingestFile(instance, file, body?.remoteJid, {
+      apiKey: body?.openaiApiKey,
+      model: body?.openaiModel,
+    });
+  }
+
   public async listReceipts(instance: InstanceDto, query: ReceiptQueryDto) {
     return this.supermarketService.listReceipts(instance, query);
   }

@@ -103,6 +103,19 @@
       .status { font-size: 13px; color: var(--muted); margin-left: auto; }
       .status.err { color: #f87171; }
       .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+      .dropzone { border: 1.5px dashed var(--border); border-radius: 12px; padding: 22px; text-align: center; transition: border-color 0.15s, background 0.15s; cursor: pointer; }
+      .dropzone.drag { border-color: var(--accent); background: var(--panel-2); }
+      .dz-inner { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; }
+      .dz-emoji { font-size: 28px; }
+      .linkbtn { background: none; border: none; color: var(--accent); font: inherit; cursor: pointer; padding: 0; text-decoration: underline; }
+      .upload-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+      .up-item { display: flex; align-items: center; gap: 10px; font-size: 13px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; }
+      .up-item .up-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .up-item .up-state { font-size: 12px; }
+      .up-item.ok .up-state { color: var(--good); }
+      .up-item.err .up-state { color: #f87171; }
+      .up-item .spin { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
     </style>
   </head>
   <body>
@@ -137,6 +150,21 @@
         <div class="actions">
           <button class="load" id="load">Carregar</button>
         </div>
+      </section>
+
+      <section class="card upload-card" style="margin-bottom:20px">
+        <h2>Enviar nota (imagem, PDF ou arquivo)</h2>
+        <div id="drop" class="dropzone">
+          <input id="fileInput" type="file" accept="image/*,application/pdf,.pdf,.txt,.csv" multiple hidden />
+          <div class="dz-inner">
+            <span class="dz-emoji">📎</span>
+            <div>
+              <strong>Arraste aqui</strong> ou <button type="button" id="pick" class="linkbtn">escolha arquivos</button>
+              <div class="hint">Foto do cupom, PDF da nota ou arquivo de texto com o link/QR da NFC-e.</div>
+            </div>
+          </div>
+        </div>
+        <div id="uploadList" class="upload-list"></div>
       </section>
 
       <section class="kpis" id="kpis"></section>
@@ -326,6 +354,80 @@
           setStatus('Falha ao carregar: ' + e.message + ' (verifique servidor/instância/API key).', true);
         }
       }
+
+      // ---- Upload de arquivos ----
+      function baseCfg() {
+        return {
+          server: el('server').value.replace(/\/$/, ''),
+          instance: el('instance').value.trim(),
+          apikey: el('apikey').value.trim(),
+        };
+      }
+
+      async function uploadFile(file, rowEl) {
+        var cfg = baseCfg();
+        if (!cfg.server || !cfg.instance || !cfg.apikey) {
+          rowEl.className = 'up-item err';
+          rowEl.querySelector('.up-state').textContent = 'configure servidor/instância/API key';
+          return false;
+        }
+        var form = new FormData();
+        form.append('file', file, file.name);
+        try {
+          var resp = await fetch(cfg.server + '/supermarket/upload/' + encodeURIComponent(cfg.instance), {
+            method: 'POST',
+            headers: { apikey: cfg.apikey },
+            body: form,
+          });
+          var data = await resp.json().catch(function () { return {}; });
+          if (!resp.ok) {
+            var msg = data && data.message ? (Array.isArray(data.message) ? data.message.join('; ') : data.message) : 'HTTP ' + resp.status;
+            throw new Error(msg);
+          }
+          rowEl.className = 'up-item ok';
+          rowEl.querySelector('.up-state').textContent =
+            '✓ ' + (data.itemCount || (data.Items && data.Items.length) || 0) + ' itens · ' + money(data.totalAmount || 0);
+          return true;
+        } catch (e) {
+          rowEl.className = 'up-item err';
+          rowEl.querySelector('.up-state').textContent = '✗ ' + e.message;
+          return false;
+        }
+      }
+
+      async function handleFiles(fileList) {
+        var files = Array.prototype.slice.call(fileList);
+        if (!files.length) return;
+        var listEl = el('uploadList');
+        var anyOk = false;
+        for (var i = 0; i < files.length; i++) {
+          var file = files[i];
+          var row = document.createElement('div');
+          row.className = 'up-item';
+          row.innerHTML = '<span class="spin"></span><span class="up-name"></span><span class="up-state">enviando…</span>';
+          row.querySelector('.up-name').textContent = file.name;
+          listEl.prepend(row);
+          var ok = await uploadFile(file, row);
+          var spin = row.querySelector('.spin');
+          if (spin) spin.remove();
+          if (ok) anyOk = true;
+        }
+        if (anyOk) loadData();
+      }
+
+      var drop = el('drop');
+      el('pick').addEventListener('click', function (e) { e.stopPropagation(); el('fileInput').click(); });
+      drop.addEventListener('click', function () { el('fileInput').click(); });
+      el('fileInput').addEventListener('change', function (e) { handleFiles(e.target.files); e.target.value = ''; });
+      ['dragenter', 'dragover'].forEach(function (ev) {
+        drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('drag'); });
+      });
+      ['dragleave', 'drop'].forEach(function (ev) {
+        drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('drag'); });
+      });
+      drop.addEventListener('drop', function (e) {
+        if (e.dataTransfer && e.dataTransfer.files) handleFiles(e.dataTransfer.files);
+      });
 
       el('load').addEventListener('click', loadData);
       loadCfg();

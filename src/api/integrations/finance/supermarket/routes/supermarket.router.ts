@@ -5,6 +5,7 @@ import { supermarketController } from '@api/server.module';
 import { ROOT_DIR } from '@config/path.config';
 import { instanceSchema } from '@validate/instance.schema';
 import { RequestHandler, Router } from 'express';
+import multer from 'multer';
 import path from 'path';
 
 import {
@@ -15,6 +16,10 @@ import {
 } from '../dto/supermarket.dto';
 import { ingestReceiptSchema, manualReceiptSchema } from '../validate/supermarket.schema';
 
+// Receipts are held in memory and passed straight to the parser; 20 MB covers
+// high-resolution photos and multi-page PDFs.
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
 export class SupermarketRouter extends RouterBroker {
   constructor(...guards: RequestHandler[]) {
     super();
@@ -23,6 +28,18 @@ export class SupermarketRouter extends RouterBroker {
       // then fetches /analytics using the apikey the user types in the page).
       .get('/dashboard', (_req, res) => {
         res.sendFile(path.join(ROOT_DIR, 'public', 'supermarket', 'dashboard.html'));
+      })
+      .post(this.routerPath('upload'), ...guards, upload.single('file'), async (req, res) => {
+        const bodyData = req.body;
+
+        const response = await this.dataValidate<InstanceDto>({
+          request: req,
+          schema: null,
+          ClassRef: InstanceDto,
+          execute: (instance) => supermarketController.uploadReceipt(instance, bodyData, req.file),
+        });
+
+        res.status(HttpStatus.CREATED).json(response);
       })
       .post(this.routerPath('receipt'), ...guards, async (req, res) => {
         const response = await this.dataValidate<IngestReceiptDto>({

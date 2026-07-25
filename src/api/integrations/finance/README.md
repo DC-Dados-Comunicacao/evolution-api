@@ -36,6 +36,7 @@ Base: `/supermarket` — todos exigem `:instanceName` e a apikey da instância.
 | Método | Rota                                        | Descrição                                             |
 | ------ | ------------------------------------------- | ----------------------------------------------------- |
 | POST   | `/supermarket/receipt/:instanceName`        | Ingerir nota (`url` da NFC-e, `base64`/`imageUrl`)    |
+| POST   | `/supermarket/upload/:instanceName`         | **Upload de arquivo** (imagem, PDF ou texto) — `multipart/form-data`, campo `file` |
 | POST   | `/supermarket/manual/:instanceName`         | Cadastrar nota manualmente (lista de itens)           |
 | GET    | `/supermarket/receipts/:instanceName`       | Listar notas (`startDate`, `endDate`, `category`)     |
 | GET    | `/supermarket/receipt/:receiptId/:instanceName` | Detalhe de uma nota                               |
@@ -57,6 +58,19 @@ Ingerir por foto (base64):
 POST /supermarket/receipt/minha-instancia
 { "base64": "<conteudo-base64>", "mimeType": "image/jpeg" }
 ```
+
+Upload de arquivo (imagem, PDF ou texto) via `multipart/form-data`:
+
+```bash
+curl -X POST https://sua-evolution-api/supermarket/upload/minha-instancia \
+  -H "apikey: SUA_APIKEY" \
+  -F "file=@/caminho/da/nota.pdf"
+```
+
+Estratégia por tipo de arquivo: **imagem** → leitura por visão da IA; **PDF** →
+extrai o texto (e segue o link da NFC-e se houver, senão interpreta com IA);
+**texto/CSV** → detecta link/QR da NFC-e ou interpreta com IA. O mesmo upload
+está disponível no dashboard (arrastar-e-soltar). Limite de 20 MB por arquivo.
 
 Análise de gastos:
 
@@ -93,5 +107,10 @@ Models: `SupermarketReceipt` e `SupermarketReceiptItem` (migrations em
 - Dashboard web consumindo o endpoint `analytics` (gráficos por categoria, mês,
   ranking de lojas/itens).
 - Captura automática de **foto** enviada no WhatsApp (hoje a captura automática
-  cobre link/QR; foto já funciona pela API REST).
+  cobre link/QR; foto/PDF já funcionam pela API REST e pelo upload do dashboard).
 - Toggle de habilitação do módulo por instância.
+
+## Dependências adicionais
+
+`pdf-parse` (extração de texto de PDF) — carregada sob demanda; se ausente, o
+upload de PDF retorna uma mensagem orientando a enviar como imagem/link.

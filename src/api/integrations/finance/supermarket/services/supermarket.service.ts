@@ -88,6 +88,84 @@ export class SupermarketService {
       );
     }
 
+    return this.finalizeIngest(instance, instanceId, parsed, source, sourceUrl, data.remoteJid);
+  }
+
+  /**
+   * Ingest a receipt from an uploaded file (image, PDF or text). The extraction
+   * strategy is chosen by mime type: images go through vision OCR, PDFs/text are
+   * read and interpreted, and NFC-e references embedded in text are followed.
+   */
+  public async ingestFile(
+    instance: InstanceDto,
+    file: { buffer: Buffer; mimetype?: string; originalname?: string },
+    remoteJid?: string,
+    openai?: { apiKey?: string; model?: string },
+  ) {
+    if (!file || !file.buffer?.length) {
+      throw new BadRequestException('Nenhum arquivo recebido no campo "file".');
+    }
+
+    const instanceId = await this.resolveInstanceId(instance.instanceName);
+    const mimetype = (file.mimetype || '').toLowerCase();
+    const name = (file.originalname || '').toLowerCase();
+
+    let parsed: ParsedReceipt;
+    let source: 'NFCE_LINK' | 'IMAGE' | 'PDF' | 'MANUAL';
+    let sourceUrl: string | undefined;
+
+    if (mimetype.startsWith('image/') || /\.(jpe?g|png|webp|gif|bmp|heic)$/.test(name)) {
+      const apiKey = await this.resolveOpenAiKey(instanceId, openai?.apiKey);
+      parsed = await this.ocrService.parse({
+        apiKey,
+        model: openai?.model,
+        base64: file.buffer.toString('base64'),
+        mimeType: mimetype || 'image/jpeg',
+      });
+      source = 'IMAGE';
+    } else if (mimetype === 'application/pdf' || name.endsWith('.pdf')) {
+      const text = await this.extractPdfText(file.buffer);
+      const url = this.nfceService.extractUrl(text);
+      if (url) {
+        parsed = await this.nfceService.parseFromUrl(url);
+        source = 'NFCE_LINK';
+        sourceUrl = url;
+      } else {
+        const apiKey = await this.resolveOpenAiKey(instanceId, openai?.apiKey);
+        parsed = await this.ocrService.parseFromText({ apiKey, model: openai?.model, text });
+        source = 'PDF';
+      }
+    } else {
+      // Plain text / CSV / unknown: try to read it as text.
+      const text = file.buffer.toString('utf8');
+      if (!text.trim()) {
+        throw new BadRequestException(
+          'Formato de arquivo não suportado. Envie uma imagem, um PDF ou o link/QR da NFC-e.',
+        );
+      }
+      if (this.nfceService.isNfce(text)) {
+        const url = this.nfceService.extractUrl(text) ?? text;
+        parsed = await this.nfceService.parseFromUrl(url);
+        source = 'NFCE_LINK';
+        sourceUrl = url;
+      } else {
+        const apiKey = await this.resolveOpenAiKey(instanceId, openai?.apiKey);
+        parsed = await this.ocrService.parseFromText({ apiKey, model: openai?.model, text });
+        source = 'MANUAL';
+      }
+    }
+
+    return this.finalizeIngest(instance, instanceId, parsed, source, sourceUrl, remoteJid);
+  }
+
+  private async finalizeIngest(
+    instance: InstanceDto,
+    instanceId: string,
+    parsed: ParsedReceipt,
+    source: 'NFCE_LINK' | 'IMAGE' | 'PDF' | 'MANUAL',
+    sourceUrl: string | undefined,
+    remoteJid: string | undefined,
+  ) {
     if (!parsed.items || parsed.items.length === 0) {
       throw new BadRequestException('Não foi possível identificar itens nesta nota.');
     }
@@ -101,15 +179,40 @@ export class SupermarketService {
       totalAmount: parsed.totalAmount,
       sourceUrl,
       rawText: parsed.rawText,
-      remoteJid: data.remoteJid,
+      remoteJid,
       items: parsed.items,
     });
 
-    if (data.remoteJid) {
-      await this.sendWhatsappSummary(instance.instanceName, data.remoteJid, receipt);
+    if (remoteJid) {
+      await this.sendWhatsappSummary(instance.instanceName, remoteJid, receipt);
     }
 
     return receipt;
+  }
+
+  private async extractPdfText(buffer: Buffer): Promise<string> {
+    let pdfParse: (data: Buffer) => Promise<{ text: string }>;
+    try {
+      // Lazily required so the app boots even if the optional dep is missing.
+      pdfParse = require('pdf-parse');
+    } catch {
+      throw new BadRequestException(
+        'Leitura de PDF indisponível (dependência "pdf-parse" não instalada). Envie a nota como imagem ou link/QR.',
+      );
+    }
+
+    try {
+      const result = await pdfParse(buffer);
+      const text = (result?.text || '').trim();
+      if (!text) {
+        throw new Error('empty');
+      }
+      return text;
+    } catch {
+      throw new BadRequestException(
+        'Não foi possível extrair texto deste PDF (parece ser digitalizado). Envie a nota como imagem (foto) para leitura por IA.',
+      );
+    }
   }
 
   public async createManual(instance: InstanceDto, data: ManualReceiptDto) {

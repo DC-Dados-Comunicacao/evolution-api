@@ -13,6 +13,12 @@ export interface OcrInput {
   mimeType?: string;
 }
 
+export interface OcrTextInput {
+  apiKey: string;
+  model?: string;
+  text: string;
+}
+
 const EXTRACTION_PROMPT = `Você é um extrator de dados de cupons fiscais de supermercado brasileiros.
 Analise a imagem do cupom/nota e devolva SOMENTE um JSON válido, sem comentários, com o formato:
 {
@@ -68,6 +74,36 @@ export class ReceiptOcrService {
     } catch (error: any) {
       this.logger.error(`OpenAI OCR request failed: ${error?.message}`);
       throw new Error('Falha ao ler a imagem da nota com a IA. Verifique a credencial da OpenAI.');
+    }
+
+    return this.normalize(content);
+  }
+
+  /**
+   * Extract structured receipt data from raw text (e.g. extracted from a PDF or
+   * a plain-text receipt) using an OpenAI model.
+   */
+  public async parseFromText(input: OcrTextInput): Promise<ParsedReceipt> {
+    const client = new OpenAI({ apiKey: input.apiKey });
+    const model = input.model || 'gpt-4o-mini';
+
+    let content: string;
+    try {
+      const completion = await client.chat.completions.create({
+        model,
+        temperature: 0,
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'user',
+            content: `${EXTRACTION_PROMPT}\n\nTexto da nota:\n"""${input.text.slice(0, 12000)}"""`,
+          },
+        ],
+      });
+      content = completion.choices?.[0]?.message?.content ?? '';
+    } catch (error: any) {
+      this.logger.error(`OpenAI text extraction failed: ${error?.message}`);
+      throw new Error('Falha ao interpretar o texto da nota com a IA. Verifique a credencial da OpenAI.');
     }
 
     return this.normalize(content);
