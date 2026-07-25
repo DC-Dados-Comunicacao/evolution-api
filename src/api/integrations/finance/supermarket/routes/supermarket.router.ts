@@ -2,8 +2,10 @@ import { RouterBroker } from '@api/abstract/abstract.router';
 import { InstanceDto } from '@api/dto/instance.dto';
 import { HttpStatus } from '@api/routes/index.router';
 import { supermarketController } from '@api/server.module';
+import { ROOT_DIR } from '@config/path.config';
 import { instanceSchema } from '@validate/instance.schema';
 import { RequestHandler, Router } from 'express';
+import path from 'path';
 
 import {
   AnalyticsQueryDto,
@@ -17,6 +19,11 @@ export class SupermarketRouter extends RouterBroker {
   constructor(...guards: RequestHandler[]) {
     super();
     this.router
+      // Static dashboard page (no apikey guard: the browser loads the shell,
+      // then fetches /analytics using the apikey the user types in the page).
+      .get('/dashboard', (_req, res) => {
+        res.sendFile(path.join(ROOT_DIR, 'public', 'supermarket', 'dashboard.html'));
+      })
       .post(this.routerPath('receipt'), ...guards, async (req, res) => {
         const response = await this.dataValidate<IngestReceiptDto>({
           request: req,
