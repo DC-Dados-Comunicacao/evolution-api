@@ -30,6 +30,8 @@ import { OpenaiService } from './integrations/chatbot/openai/services/openai.ser
 import { TypebotController } from './integrations/chatbot/typebot/controllers/typebot.controller';
 import { TypebotService } from './integrations/chatbot/typebot/services/typebot.service';
 import { EventManager } from './integrations/event/event.manager';
+import { SupermarketController } from './integrations/finance/supermarket/controllers/supermarket.controller';
+import { SupermarketService } from './integrations/finance/supermarket/services/supermarket.service';
 import { S3Controller } from './integrations/storage/s3/controllers/s3.controller';
 import { S3Service } from './integrations/storage/s3/services/s3.service';
 import { ProviderFiles } from './provider/sessions';
@@ -124,5 +126,9 @@ export const evolutionBotController = new EvolutionBotController(evolutionBotSer
 
 const flowiseService = new FlowiseService(waMonitor, configService, prismaRepository);
 export const flowiseController = new FlowiseController(flowiseService, prismaRepository, waMonitor);
+
+// finance - supermarket
+const supermarketService = new SupermarketService(waMonitor, configService, prismaRepository);
+export const supermarketController = new SupermarketController(supermarketService);
 
 logger.info('Module - ON');

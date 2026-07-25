@@ -105,6 +105,8 @@ model Instance {
   Flowise                 Flowise[]
   FlowiseSetting          FlowiseSetting?
   Pusher                  Pusher?
+  SupermarketReceipt      SupermarketReceipt[]
+  SupermarketSetting      SupermarketSetting?
 }
 
 model Session {
@@ -626,4 +628,69 @@ model IsOnWhatsapp {
   jidOptions String
   createdAt  DateTime @default(dbgenerated("CURRENT_TIMESTAMP")) @db.Timestamp
   updatedAt  DateTime @updatedAt @db.Timestamp
+}
+
+enum SupermarketReceiptSource {
+  NFCE_LINK
+  IMAGE
+  PDF
+  MANUAL
+}
+
+enum SupermarketReceiptStatus {
+  PENDING
+  PROCESSED
+  FAILED
+}
+
+model SupermarketReceipt {
+  id           String                   @id @default(cuid())
+  source       SupermarketReceiptSource @default(MANUAL)
+  status       SupermarketReceiptStatus @default(PENDING)
+  accessKey    String?                  @unique @db.VarChar(60)
+  storeName    String?                  @db.VarChar(255)
+  storeCnpj    String?                  @db.VarChar(20)
+  purchaseDate DateTime?                @db.Timestamp
+  totalAmount  Decimal                  @default(0) @db.Decimal(12, 2)
+  itemCount    Int                      @default(0)
+  sourceUrl    String?                  @db.VarChar(1000)
+  rawText      String?                  @db.Text
+  errorMessage String?                  @db.VarChar(500)
+  remoteJid    String?                  @db.VarChar(100)
+  createdAt    DateTime?                @default(dbgenerated("CURRENT_TIMESTAMP")) @db.Timestamp
+  updatedAt    DateTime                 @updatedAt @db.Timestamp
+  Instance     Instance                 @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  instanceId   String
+  Items        SupermarketReceiptItem[]
+
+  @@index([instanceId])
+  @@index([purchaseDate])
+}
+
+model SupermarketReceiptItem {
+  id          String             @id @default(cuid())
+  description String             @db.VarChar(500)
+  category    String             @default("Outros") @db.VarChar(60)
+  quantity    Decimal            @default(1) @db.Decimal(12, 3)
+  unit        String?            @db.VarChar(20)
+  unitPrice   Decimal            @default(0) @db.Decimal(12, 4)
+  totalPrice  Decimal            @default(0) @db.Decimal(12, 2)
+  createdAt   DateTime?          @default(dbgenerated("CURRENT_TIMESTAMP")) @db.Timestamp
+  Receipt     SupermarketReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  receiptId   String
+
+  @@index([receiptId])
+  @@index([category])
+}
+
+model SupermarketSetting {
+  id             String    @id @default(cuid())
+  enabled        Boolean   @default(false)
+  captureMedia   Boolean   @default(true)
+  replyOnCapture Boolean   @default(true)
+  openaiCredsId  String?   @db.VarChar(100)
+  createdAt      DateTime? @default(dbgenerated("CURRENT_TIMESTAMP")) @db.Timestamp
+  updatedAt      DateTime  @updatedAt @db.Timestamp
+  Instance       Instance  @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  instanceId     String    @unique
 }

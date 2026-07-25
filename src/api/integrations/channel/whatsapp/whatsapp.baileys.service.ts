@@ -55,7 +55,7 @@ import { chatwootImport } from '@api/integrations/chatbot/chatwoot/utils/chatwoo
 import * as s3Service from '@api/integrations/storage/s3/libs/minio.server';
 import { ProviderFiles } from '@api/provider/sessions';
 import { PrismaRepository } from '@api/repository/repository.service';
-import { chatbotController, waMonitor } from '@api/server.module';
+import { chatbotController, supermarketController, waMonitor } from '@api/server.module';
 import { CacheService } from '@api/services/cache.service';
 import { ChannelStartupService } from '@api/services/channel.service';
 import { Events, MessageSubtype, TypeMediaMessage, wa } from '@api/types/wa.types';
@@ -1347,6 +1347,13 @@ export class BaileysStartupService extends ChannelStartupService {
           this.sendDataWebhook(Events.MESSAGES_UPSERT, messageRaw);
 
           await chatbotController.emit({
+            instance: { instanceName: this.instance.name, instanceId: this.instanceId },
+            remoteJid: messageRaw.key.remoteJid,
+            msg: messageRaw,
+            pushName: messageRaw.pushName,
+          });
+
+          await supermarketController.emit({
             instance: { instanceName: this.instance.name, instanceId: this.instanceId },
             remoteJid: messageRaw.key.remoteJid,
             msg: messageRaw,

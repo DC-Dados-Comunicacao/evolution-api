@@ -4,6 +4,7 @@ import Telemetry from '@api/guards/telemetry.guard';
 import { ChannelRouter } from '@api/integrations/channel/channel.router';
 import { ChatbotRouter } from '@api/integrations/chatbot/chatbot.router';
 import { EventRouter } from '@api/integrations/event/event.router';
+import { FinanceRouter } from '@api/integrations/finance/finance.router';
 import { StorageRouter } from '@api/integrations/storage/storage.router';
 import { configService } from '@config/env.config';
 import { Router } from 'express';
@@ -90,6 +91,7 @@ router
   .use('', new ChannelRouter(configService, ...guards).router)
   .use('', new EventRouter(configService, ...guards).router)
   .use('', new ChatbotRouter(...guards).router)
-  .use('', new StorageRouter(...guards).router);
+  .use('', new StorageRouter(...guards).router)
+  .use('', new FinanceRouter(...guards).router);
 
 export { HttpStatus, router };
